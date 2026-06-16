@@ -4,17 +4,23 @@ import json
 import streamlit as st
 from groq import Groq
 
-# --- CORE LOGIC ---
+# --- INITIALIZATION ---
 @st.cache_resource
 def get_client():
-    return Groq(api_key=st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY"))
+    api_key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY missing.")
+    return Groq(api_key=api_key)
 
-def get_sovereign_instruction(client, vitals):
-    """Encapsulated API call with minimal overhead."""
-    prompt = f"Vitals: {json.dumps(vitals)}. Output ONLY 'ADJUST:X' (X=0-100)."
+def get_instruction(client, vitals):
+    """Call the LLM with a safe, direct prompt."""
+    prompt = f"Vitals: {json.dumps(vitals)}. Output ONLY the string 'ADJUST:X' where X is 0-100."
     try:
         response = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a controller. Respond only with 'ADJUST:X' format."},
+                {"role": "user", "content": prompt}
+            ],
             model="llama-3.3-70b-versatile",
             temperature=0.0
         )
@@ -22,25 +28,26 @@ def get_sovereign_instruction(client, vitals):
     except Exception:
         return None
 
-# --- UI & STATE LAYER ---
+# --- UI LAYER ---
 def main():
     st.title("AXIOM-0: KERNEL ONLINE")
     client = get_client()
 
-    # Session State tracks the timing to avoid hitting rate limits
+    # Initialize state
     if 'next_run' not in st.session_state:
-        st.session_state.next_run = time.time()
+        st.session_state.next_run = 0
 
+    # Logic Loop
     if time.time() >= st.session_state.next_run:
         vitals = {"temp": 77.0, "status": "STABLE"}
-        instruction = get_sovereign_instruction(client, vitals)
+        instruction = get_instruction(client, vitals)
         
-        if instruction:
-            st.success(f"INSTRUCTION: {instruction}")
-            st.session_state.next_run = time.time() + 20 # Wait 20 seconds between runs
+        if instruction and "ADJUST" in instruction:
+            st.success(f"INSTRUCTION RECEIVED: {instruction}")
+            st.session_state.next_run = time.time() + 20
         else:
-            st.warning("API Throttled. Cooling down...")
-            st.session_state.next_run = time.time() + 60 # Penalty cooldown
+            st.warning("API Throttled or Refused. Cooldown...")
+            st.session_state.next_run = time.time() + 60
     else:
         st.info(f"System in stasis. Next cycle in {int(st.session_state.next_run - time.time())}s")
         time.sleep(2)
@@ -51,3 +58,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
