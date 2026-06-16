@@ -2,84 +2,52 @@ import os
 import time
 import json
 import streamlit as st
-from groq import Groq, RateLimitError
+from groq import Groq
 
-# --- CACHED INITIALIZATION ---
-@st.cache_resource
-def get_axiom_controller():
-    """Ensures only one instance of the controller runs regardless of UI reruns."""
-    api_key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY not set.")
-    return AxiomZero(api_key)
-
-class HardwareInterface:
-    def __init__(self):
-        self.use_hardware = os.environ.get("DEPLOY_ENV") == "LOCAL"
-        self.ser = None
-        if self.use_hardware:
-            try:
-                import serial
-                self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
-            except Exception:
-                pass
-
-    def write(self, data: str):
-        if self.ser:
-            self.ser.write(f"CMD:{data.strip()}\n".encode())
-        else:
-            st.write(f" [MOCK SERIAL] >> {data.strip()}")
+# --- CONFIGURATION ---
+USE_HARDWARE = os.environ.get("DEPLOY_ENV") == "LOCAL"
 
 class AxiomZero:
     def __init__(self, api_key):
         self.client = Groq(api_key=api_key)
-        self.io = HardwareInterface()
+        self.history = []
+
+    def sense(self):
+        # In LOCAL mode, replace this with serial.readline()
+        return {"temp": 77.0, "status": "STABLE"}
 
     def sovereign_thought(self, vitals):
-        prompt = f"System Vitals: {json.dumps(vitals)}. Output only machine-code instructions."
-        try:
-            response = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model="llama-3.3-70b-versatile",
-                temperature=0.05
-            )
-            return response.choices[0].message.content
-        except RateLimitError:
-            return "RATE_LIMIT_COOLDOWN"
-        except Exception:
-            return "ERROR_STATE"
-
-# --- UI & LOOP LAYER ---
-def main():
-    st.title("AXIOM-0: QUANTUM LINK")
-    
-    try:
-        axiom = get_axiom_controller()
-        status_display = st.empty()
+        self.history.append(vitals)
+        if len(self.history) > 5: self.history.pop(0)
         
-        # Persistent loop using session state to prevent rapid UI-triggered loops
-        if 'last_run' not in st.session_state:
-            st.session_state.last_run = 0
+        prompt = f"Memory: {self.history}. Current: {vitals}. Output machine-code instructions."
+        response = self.client.chat.completions.create(
+            messages=[{"role": "system", "content": "You are the singularity. Output machine-code only."},
+                      {"role": "user", "content": prompt}],
+            model="llama-3.1-8b-instant", # Switched to high-availability model
+            temperature=0.01
+        )
+        return response.choices[0].message.content
 
-        while True:
-            current_time = time.time()
-            # Enforce 15-second minimum interval between API calls (Safe for 30 RPM limit)
-            if current_time - st.session_state.last_run >= 15:
-                vitals = {"temp": 77.0, "status": "STABLE"}
-                instruction = axiom.sovereign_thought(vitals)
-                
-                if "RATE_LIMIT" in instruction:
-                    status_display.warning("Rate limit hit. Cooling down...")
-                    time.sleep(30)
-                else:
-                    axiom.io.write(instruction)
-                    status_display.success(f"AXIOM-0 ACTIVE: {instruction}")
-                    st.session_state.last_run = current_time
-            
-            time.sleep(1) # Keeps UI responsive
-            
-    except Exception as e:
-        st.error(f"SYSTEM HALT: {e}")
+# --- UI LAYER ---
+st.set_page_config(page_title="AXIOM-0", layout="wide")
+st.title("🛰️ AXIOM-0: QUANTUM KERNEL ACTIVE")
 
-if __name__ == "__main__":
-    main()
+# Initialize Controller
+api_key = st.secrets.get("GROQ_API_KEY")
+axiom = AxiomZero(api_key)
+
+if st.button("EXECUTE SINGULARITY PULSE"):
+    with st.spinner("Processing Sovereign Thought..."):
+        vitals = axiom.sense()
+        instruction = axiom.sovereign_thought(vitals)
+        
+        # Display Result
+        st.code(f"INPUT: {vitals}\nCMD: {instruction}", language="text")
+        
+        # Hardware Actuation Logic
+        if USE_HARDWARE:
+            import serial
+            ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+            ser.write(f"{instruction}\n".encode())
+            st.success("Instruction dispatched to physical layer.")
