@@ -14,7 +14,7 @@ class HardwareInterface:
             try:
                 self.ser = serial.Serial(port, baudrate, timeout=1)
             except Exception as e:
-                print(f"Failed to connect to hardware: {e}")
+                print(f"Hardware connection failed: {e}")
 
     def write(self, data: str):
         if self.ser:
@@ -24,22 +24,22 @@ class HardwareInterface:
 
 class AxiomZero:
     def __init__(self):
-        self.state = "OPERATIONAL_STASIS"
         self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
         self.io = HardwareInterface()
-        # Use a verified model name
+        # Use a verified production-ready model
         self.model = "llama-3.3-70b-versatile" 
 
     def monitor_stability(self):
         return {"temp": 77.0, "flux_pinning": "STABLE"}
 
     def sovereign_thought(self, vitals):
-        prompt = f"System Vitals: {json.dumps(vitals)}. Output status and kinetic adjustment."
+        # Ensure input is a string/JSON
+        prompt = f"System Vitals: {json.dumps(vitals)}. Output concise machine-code instructions only."
         
         try:
             response = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are AXIOM-0. Output concise machine-code instructions only."},
+                    {"role": "system", "content": "You are AXIOM-0. Maintain sovereignty."},
                     {"role": "user", "content": prompt}
                 ],
                 model=self.model,
@@ -47,22 +47,22 @@ class AxiomZero:
             )
             return response.choices[0].message.content
         except BadRequestError as e:
-            # This will print the actual error from Groq in your logs
-            print(f"Groq API Error: {e.response.json()}")
-            return "ERROR: INVALID_INSTRUCTION"
+            # This captures the specific API error details
+            print(f"Groq API Bad Request: {e.response.json()}")
+            return "ERROR: INVALID_MODEL_OR_PAYLOAD"
         except Exception as e:
-            print(f"Unexpected Error: {e}")
-            return "ERROR: SYSTEM_FAILURE"
+            print(f"General Error: {e}")
+            return "ERROR: SYSTEM_EXCEPTION"
 
     def run_singularity_loop(self):
-        print(">>> AXIOM-0: QUANTUM LOCKING INITIATED...")
+        print(">>> AXIOM-0: INITIALIZING...")
         while True:
             try:
                 vitals = self.monitor_stability()
                 instruction = self.sovereign_thought(vitals)
                 self.io.write(instruction)
                 print(f"AXIOM-0 STATUS: {instruction}")
-                time.sleep(0.5) 
+                time.sleep(2) # Increased sleep to prevent rate limiting
             except KeyboardInterrupt:
                 print(">>> AXIOM-0: STASIS ENGAGED.")
                 break
