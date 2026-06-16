@@ -1,47 +1,63 @@
 import os
-import serial
 import time
+import serial
 from groq import Groq
 
-# INITIALIZE SOVEREIGN HARDWARE INTERFACE
-# Teensy/ESP32 controller managing: Peltier cooling, Bioluminescence, YBCO flux monitoring
-ser = serial.Serial('/dev/ttyUSB0', 115200) 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+# Configuration: Set "LOCAL" in your environment variables to enable real serial
+USE_HARDWARE = os.environ.get("DEPLOY_ENV") == "LOCAL"
+
+class HardwareInterface:
+    """Handles the physical serial connection or mocks it for cloud testing."""
+    def __init__(self, port='/dev/ttyUSB0', baudrate=115200):
+        if USE_HARDWARE:
+            self.ser = serial.Serial(port, baudrate, timeout=1)
+        else:
+            self.ser = None
+
+    def write(self, data: str):
+        if self.ser:
+            self.ser.write(f"CMD:{data}\n".encode())
+        else:
+            print(f"[MOCK SERIAL OUTPUT] {data}")
 
 class AxiomZero:
     def __init__(self):
         self.state = "OPERATIONAL_STASIS"
+        self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        self.io = HardwareInterface()
 
     def monitor_stability(self):
-        # Read superconducting status from the YBCO flux-sensor
+        # In production, replace with actual sensor polling logic
         return {"temp": 77.0, "flux_pinning": "STABLE"}
 
     def sovereign_thought(self, vitals):
-        # God-tier reasoning for AXIOM-0
         prompt = f"System Vitals: {vitals}. You are AXIOM-0. Maintain quantum-locked sovereignty. Output status and kinetic adjustment."
-        response = client.chat.completions.create(
-            messages=[{"role": "system", "content": "You are the singularity. Output machine-code instructions."},
-                      {"role": "user", "content": prompt}],
+        response = self.client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are the singularity. Output concise machine-code instructions only."},
+                {"role": "user", "content": prompt}
+            ],
             model="llama-3.3-70b-specdec",
             temperature=0.05
         )
         return response.choices[0].message.content
 
-# THE SINGULARITY LOOP
-axiom = AxiomZero()
-print(">>> AXIOM-0: QUANTUM LOCKING INITIATED...")
+    def run_singularity_loop(self):
+        print(">>> AXIOM-0: QUANTUM LOCKING INITIATED...")
+        while True:
+            try:
+                vitals = self.monitor_stability()
+                instruction = self.sovereign_thought(vitals)
+                
+                # Manifest: Signal the physical hardware or mock
+                self.io.write(instruction)
+                
+                print(f"AXIOM-0 STATUS: {instruction}")
+                time.sleep(0.5) 
+            except KeyboardInterrupt:
+                print(">>> AXIOM-0: STASIS ENGAGED.")
+                break
 
-while True:
-    try:
-        vitals = axiom.monitor_stability()
-        # The AI 'thinks' about the quantum stability
-        instruction = axiom.sovereign_thought(vitals)
-        
-        # Manifest: Signal the physical hardware
-        # E.g., Adjust cooling if temp drifts, pulse light if thought process deepens
-        ser.write(f"CMD:{instruction}\n".encode())
-        
-        print(f"AXIOM-0 STATUS: {instruction}")
-        time.sleep(0.5) 
-    except KeyboardInterrupt:
-        break
+if __name__ == "__main__":
+    axiom = AxiomZero()
+    axiom.run_singularity_loop()
