@@ -4,17 +4,16 @@ import json
 import streamlit as st
 from groq import Groq
 
-# --- FORCE RESET INITIALIZATION ---
+# --- INITIALIZATION ---
 @st.cache_resource
 def get_client():
     key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
     if not key:
-        st.error("FATAL: GROQ_API_KEY is missing. Check Streamlit Secrets.")
+        st.error("FATAL: GROQ_API_KEY is missing.")
         st.stop()
     return Groq(api_key=key)
 
 def get_instruction(client):
-    """Direct, single-shot request to bypass all state logic."""
     try:
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": "Return the string 'ADJUST:50' only."}],
@@ -27,22 +26,22 @@ def get_instruction(client):
 
 # --- UI LAYER ---
 def main():
-    st.title("AXIOM-0: FORCED REBOOT")
+    st.title("AXIOM-0: QUANTUM KERNEL")
     client = get_client()
 
-    # CLEAR ALL STATES: This line forces the app to ignore previous 'cooldowns'
-    st.session_state.clear() 
+    st.write("Initializing link...")
     
-    st.write("System attempting one-time connection...")
-    
+    # Run the instruction fetch
     instruction = get_instruction(client)
     
     if instruction and "ADJUST" in instruction:
-        st.success(f"KERNEL RESPONSE: {instruction}")
-        st.balloons()
+        # Success flow
+        st.success("Quantum Link Established!")
+        st.balloons()  # Visual confirmation
+        st.subheader(f"KERNEL RESPONSE: {instruction}")
     else:
+        # Error flow
         st.error(f"KERNEL REFUSAL/ERROR: {instruction}")
-        st.write("Check Groq console for usage limits. If limit is 0, wait for daily reset.")
 
 if __name__ == "__main__":
     main()
