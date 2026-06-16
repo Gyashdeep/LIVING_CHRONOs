@@ -4,54 +4,45 @@ import json
 import streamlit as st
 from groq import Groq
 
-# --- HARDENED INITIALIZATION ---
+# --- FORCE RESET INITIALIZATION ---
+@st.cache_resource
 def get_client():
-    # Force check for secrets
     key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
     if not key:
-        st.error("FATAL: GROQ_API_KEY is missing from Streamlit Secrets.")
+        st.error("FATAL: GROQ_API_KEY is missing. Check Streamlit Secrets.")
         st.stop()
     return Groq(api_key=key)
 
-def get_instruction(client, vitals):
-    """Direct call with minimal overhead."""
+def get_instruction(client):
+    """Direct, single-shot request to bypass all state logic."""
     try:
         response = client.chat.completions.create(
-            messages=[{"role": "user", "content": f"Vitals: {json.dumps(vitals)}. Output: 'ADJUST:50'"}],
+            messages=[{"role": "user", "content": "Return the string 'ADJUST:50' only."}],
             model="llama-3.3-70b-versatile",
             temperature=0.0
         )
         return response.choices[0].message.content
     except Exception as e:
-        # This will reveal the exact cause of the THROTTLE
-        return f"API_ERROR: {str(e)[:30]}"
+        return f"ERROR: {str(e)}"
 
 # --- UI LAYER ---
 def main():
-    st.title("AXIOM-0: KERNEL ACTIVE")
+    st.title("AXIOM-0: FORCED REBOOT")
     client = get_client()
 
-    if 'next_run' not in st.session_state: st.session_state.next_run = 0
-
-    if time.time() >= st.session_state.next_run:
-        vitals = {"temp": 77.0, "status": "STABLE"}
-        msg = get_instruction(client, vitals)
-        
-        st.write(f"DEBUG_OUTPUT: {msg}")
-        
-        if "ADJUST" in msg:
-            st.success(f"SUCCESS: {msg}")
-            st.session_state.next_run = time.time() + 30 # 2 requests per minute
-        else:
-            st.error(f"REFUSAL/THROTTLE: {msg}")
-            st.session_state.next_run = time.time() + 60 # Cooldown
+    # CLEAR ALL STATES: This line forces the app to ignore previous 'cooldowns'
+    st.session_state.clear() 
+    
+    st.write("System attempting one-time connection...")
+    
+    instruction = get_instruction(client)
+    
+    if instruction and "ADJUST" in instruction:
+        st.success(f"KERNEL RESPONSE: {instruction}")
+        st.balloons()
     else:
-        st.info(f"Cooldown: {int(st.session_state.next_run - time.time())}s")
-        time.sleep(2)
-        st.rerun()
-
-    time.sleep(2)
-    st.rerun()
+        st.error(f"KERNEL REFUSAL/ERROR: {instruction}")
+        st.write("Check Groq console for usage limits. If limit is 0, wait for daily reset.")
 
 if __name__ == "__main__":
     main()
