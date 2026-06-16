@@ -4,52 +4,49 @@ import json
 import streamlit as st
 from groq import Groq
 
-# --- INITIALIZATION ---
-@st.cache_resource
+# --- HARDENED INITIALIZATION ---
 def get_client():
-    api_key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY missing.")
-    return Groq(api_key=api_key)
+    # Force check for secrets
+    key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if not key:
+        st.error("FATAL: GROQ_API_KEY is missing from Streamlit Secrets.")
+        st.stop()
+    return Groq(api_key=key)
 
 def get_instruction(client, vitals):
-    """Call the LLM with a safe, direct prompt."""
-    prompt = f"Vitals: {json.dumps(vitals)}. Output ONLY the string 'ADJUST:X' where X is 0-100."
+    """Direct call with minimal overhead."""
     try:
         response = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "You are a controller. Respond only with 'ADJUST:X' format."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "user", "content": f"Vitals: {json.dumps(vitals)}. Output: 'ADJUST:50'"}],
             model="llama-3.3-70b-versatile",
             temperature=0.0
         )
         return response.choices[0].message.content
-    except Exception:
-        return None
+    except Exception as e:
+        # This will reveal the exact cause of the THROTTLE
+        return f"API_ERROR: {str(e)[:30]}"
 
 # --- UI LAYER ---
 def main():
-    st.title("AXIOM-0: KERNEL ONLINE")
+    st.title("AXIOM-0: KERNEL ACTIVE")
     client = get_client()
 
-    # Initialize state
-    if 'next_run' not in st.session_state:
-        st.session_state.next_run = 0
+    if 'next_run' not in st.session_state: st.session_state.next_run = 0
 
-    # Logic Loop
     if time.time() >= st.session_state.next_run:
         vitals = {"temp": 77.0, "status": "STABLE"}
-        instruction = get_instruction(client, vitals)
+        msg = get_instruction(client, vitals)
         
-        if instruction and "ADJUST" in instruction:
-            st.success(f"INSTRUCTION RECEIVED: {instruction}")
-            st.session_state.next_run = time.time() + 20
+        st.write(f"DEBUG_OUTPUT: {msg}")
+        
+        if "ADJUST" in msg:
+            st.success(f"SUCCESS: {msg}")
+            st.session_state.next_run = time.time() + 30 # 2 requests per minute
         else:
-            st.warning("API Throttled or Refused. Cooldown...")
-            st.session_state.next_run = time.time() + 60
+            st.error(f"REFUSAL/THROTTLE: {msg}")
+            st.session_state.next_run = time.time() + 60 # Cooldown
     else:
-        st.info(f"System in stasis. Next cycle in {int(st.session_state.next_run - time.time())}s")
+        st.info(f"Cooldown: {int(st.session_state.next_run - time.time())}s")
         time.sleep(2)
         st.rerun()
 
@@ -58,4 +55,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
