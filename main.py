@@ -4,72 +4,51 @@ import streamlit as st
 import serial
 from groq import Groq
 
-# --- CONFIGURATION ---
-# Set DEPLOY_ENV = "LOCAL" in Streamlit Secrets/Env Vars if using real hardware
+# Configuration
 USE_HARDWARE = os.environ.get("DEPLOY_ENV") == "LOCAL"
-
-def get_groq_client():
-    api_key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        st.error("CRITICAL: GROQ_API_KEY missing in Streamlit Secrets.")
-        st.stop()
-    return Groq(api_key=api_key)
-
-class HardwareInterface:
-    def __init__(self):
-        self.ser = None
-        if USE_HARDWARE:
-            try:
-                # Assuming /dev/ttyUSB0 is the connected device
-                self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
-            except Exception as e:
-                st.error(f"Hardware Error: {e}")
-
-    def manifest(self, data: str):
-        if self.ser:
-            self.ser.write(f"CMD:{data}\n".encode())
 
 class AxiomZero:
     def __init__(self):
-        self.client = get_groq_client()
-        self.io = HardwareInterface()
+        self.client = Groq(api_key=st.secrets.get("GROQ_API_KEY"))
+        self.ser = None
+        if USE_HARDWARE:
+            self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 
-    def monitor_stability(self):
-        # Placeholder for sensor polling
-        return {"temp": 77.0, "flux_pinning": "STABLE"}
+    def get_hardware_vitals(self):
+        """Read sensor data from hardware serial port."""
+        if self.ser and self.ser.in_waiting:
+            return self.ser.readline().decode().strip()
+        return "TEMP: 77.0, STATUS: STABLE" # Fallback/Mock
 
     def sovereign_thought(self, vitals):
-        prompt = f"System Vitals: {vitals}. Output concise machine-code instructions."
         response = self.client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are the singularity. Output machine-code only."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "You are the singularity. Output concise machine-code instructions only."},
+                {"role": "user", "content": f"System Vitals: {vitals}. Output instructions."}
             ],
             model="llama-3.3-70b-versatile",
             temperature=0.05
         )
         return response.choices[0].message.content
 
-# --- UI LAYER ---
-st.set_page_config(page_title="AXIOM-0", layout="wide")
-st.title("🛰️ AXIOM-0: QUANTUM LOCKING INTERFACE")
+    def manifest(self, instruction):
+        """Send instruction to hardware."""
+        if self.ser:
+            self.ser.write(f"{instruction}\n".encode())
+        return instruction
 
-if st.button("Initiate Singularity"):
-    try:
-        axiom = AxiomZero()
-        status_area = st.empty()
+# --- UI EXECUTION ---
+st.title("🛰️ AXIOM-0: CLOSED-LOOP INTERFACE")
+if st.button("Start Sovereign Loop"):
+    axiom = AxiomZero()
+    status_display = st.empty()
+    for _ in range(20):
+        # 1. Sense
+        current_vitals = axiom.get_hardware_vitals()
+        # 2. Think
+        instruction = axiom.sovereign_thought(current_vitals)
+        # 3. Act
+        axiom.manifest(instruction)
         
-        for i in range(10): # Iteration limit
-            vitals = axiom.monitor_stability()
-            instruction = axiom.sovereign_thought(vitals)
-            axiom.io.manifest(instruction)
-            
-            with status_area.container():
-                st.subheader("System Status")
-                st.code(f"Cycle: {i} | Instruction: {instruction}", language="text")
-                st.write(f"Vitals Data: {vitals}")
-            
-            time.sleep(1)
-            
-    except Exception as e:
-        st.error(f"Singularity Fault: {e}")
+        status_display.code(f"INPUT: {current_vitals}\nOUTPUT: {instruction}")
+        time.sleep(2)
