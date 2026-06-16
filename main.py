@@ -4,7 +4,15 @@ import json
 import streamlit as st
 from groq import Groq, RateLimitError
 
-# --- HARDWARE INTERFACE ---
+# --- CACHED INITIALIZATION ---
+@st.cache_resource
+def get_axiom_controller():
+    """Ensures only one instance of the controller runs regardless of UI reruns."""
+    api_key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY not set.")
+    return AxiomZero(api_key)
+
 class HardwareInterface:
     def __init__(self):
         self.use_hardware = os.environ.get("DEPLOY_ENV") == "LOCAL"
@@ -13,8 +21,8 @@ class HardwareInterface:
             try:
                 import serial
                 self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
-            except Exception as e:
-                st.error(f"Hardware init failed: {e}")
+            except Exception:
+                pass
 
     def write(self, data: str):
         if self.ser:
@@ -22,61 +30,56 @@ class HardwareInterface:
         else:
             st.write(f" [MOCK SERIAL] >> {data.strip()}")
 
-# --- CORE LOGIC ---
 class AxiomZero:
-    def __init__(self):
-        api_key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("GROQ_API_KEY not found in secrets.")
+    def __init__(self, api_key):
         self.client = Groq(api_key=api_key)
         self.io = HardwareInterface()
 
-    def monitor_stability(self):
-        return {"temp": 77.0, "flux_pinning": "STABLE"}
-
     def sovereign_thought(self, vitals):
-        prompt = f"System Vitals: {json.dumps(vitals)}. Output status and kinetic adjustment."
-        
-        # Exponential backoff for Rate Limits
-        for attempt in range(3):
-            try:
-                response = self.client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "You are AXIOM-0. Output machine-code instructions only."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.05
-                )
-                return response.choices[0].message.content
-            
-            except RateLimitError:
-                wait_time = (2 ** attempt) + 2 
-                st.warning(f"Rate limit reached. Waiting {wait_time}s...")
-                time.sleep(wait_time)
-            except Exception as e:
-                st.error(f"API Error: {e}")
-                break
-        return "ERROR: COMPUTE_STASIS"
+        prompt = f"System Vitals: {json.dumps(vitals)}. Output only machine-code instructions."
+        try:
+            response = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.3-70b-versatile",
+                temperature=0.05
+            )
+            return response.choices[0].message.content
+        except RateLimitError:
+            return "RATE_LIMIT_COOLDOWN"
+        except Exception:
+            return "ERROR_STATE"
 
-    def run_singularity_loop(self):
-        st.write("### AXIOM-0: QUANTUM LOCKING INITIATED...")
-        status_area = st.empty()
-        
-        while True:
-            vitals = self.monitor_stability()
-            instruction = self.sovereign_thought(vitals)
-            
-            self.io.write(instruction)
-            status_area.write(f"**AXIOM-0 Status:** {instruction}")
-            
-            # Increased sleep to maintain < 30 RPM (Groq's limit)
-            time.sleep(3) 
-
-# --- EXECUTION ---
-if __name__ == "__main__":
+# --- UI & LOOP LAYER ---
+def main():
+    st.title("AXIOM-0: QUANTUM LINK")
+    
     try:
-        axiom = AxiomZero()
-        axiom.run_singularity_loop()
+        axiom = get_axiom_controller()
+        status_display = st.empty()
+        
+        # Persistent loop using session state to prevent rapid UI-triggered loops
+        if 'last_run' not in st.session_state:
+            st.session_state.last_run = 0
+
+        while True:
+            current_time = time.time()
+            # Enforce 15-second minimum interval between API calls (Safe for 30 RPM limit)
+            if current_time - st.session_state.last_run >= 15:
+                vitals = {"temp": 77.0, "status": "STABLE"}
+                instruction = axiom.sovereign_thought(vitals)
+                
+                if "RATE_LIMIT" in instruction:
+                    status_display.warning("Rate limit hit. Cooling down...")
+                    time.sleep(30)
+                else:
+                    axiom.io.write(instruction)
+                    status_display.success(f"AXIOM-0 ACTIVE: {instruction}")
+                    st.session_state.last_run = current_time
+            
+            time.sleep(1) # Keeps UI responsive
+            
     except Exception as e:
-        st.error(f"SYSTEM FAILURE: {e}")
+        st.error(f"SYSTEM HALT: {e}")
+
+if __name__ == "__main__":
+    main()
