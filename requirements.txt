@@ -1,0 +1,8 @@
+# Hardware communication
+pyserial>=3.5
+
+# API Integration
+groq>=0.10.0
+
+# Environment management
+python-dotenv>=1.0.0
