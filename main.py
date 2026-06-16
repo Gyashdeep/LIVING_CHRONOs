@@ -6,8 +6,7 @@ from groq import Groq
 
 @st.cache_resource
 def get_client():
-    key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-    return Groq(api_key=key)
+    return Groq(api_key=st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY"))
 
 def get_instruction(client):
     try:
@@ -21,27 +20,22 @@ def get_instruction(client):
         return None
 
 def main():
-    st.title("AXIOM-0: KERNEL ACTIVE")
+    st.title("AXIOM-0: QUANTUM LINK ACTIVE")
     client = get_client()
 
-    if 'last_run' not in st.session_state: st.session_state.last_run = 0
+    # Simple 20-second interval logic
+    if 'next_run' not in st.session_state: st.session_state.next_run = 0
 
-    elapsed = time.time() - st.session_state.last_run
-    
-    # Logic to trigger update every 30 seconds
-    if elapsed > 30:
+    if time.time() >= st.session_state.next_run:
         instruction = get_instruction(client)
-        if instruction and "ADJUST" in instruction:
-            st.session_state.last_instruction = instruction
-            st.session_state.last_run = time.time()
-            st.success(f"NEW INSTRUCTION: {instruction}")
+        if instruction:
+            st.success(f"INSTRUCTION: {instruction}")
+            st.session_state.next_run = time.time() + 20 # 20s interval
         else:
-            st.warning("API call failed or empty.")
+            st.warning("Connection lost. Retrying in 60s...")
+            st.session_state.next_run = time.time() + 60
     else:
-        st.info(f"System cooling. Next cycle in: {int(30 - elapsed)} seconds.")
-        if 'last_instruction' in st.session_state:
-            st.write(f"Current State: {st.session_state.last_instruction}")
-        
+        st.info(f"Stasis. Next update: {int(st.session_state.next_run - time.time())}s")
         time.sleep(2)
         st.rerun()
 
