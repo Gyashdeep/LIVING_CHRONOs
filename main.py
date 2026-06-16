@@ -4,12 +4,17 @@ import json
 import streamlit as st
 from groq import Groq
 
+# --- FORCE RESET INITIALIZATION ---
 @st.cache_resource
 def get_client():
     key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if not key:
+        st.error("FATAL: GROQ_API_KEY is missing. Check Streamlit Secrets.")
+        st.stop()
     return Groq(api_key=key)
 
 def get_instruction(client):
+    """Direct, single-shot request to bypass all state logic."""
     try:
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": "Return the string 'ADJUST:50' only."}],
@@ -18,29 +23,26 @@ def get_instruction(client):
         )
         return response.choices[0].message.content
     except Exception as e:
-        return None
+        return f"ERROR: {str(e)}"
 
+# --- UI LAYER ---
 def main():
-    st.title("AXIOM-0: QUANTUM LINK ACTIVE")
+    st.title("AXIOM-0: FORCED REBOOT")
     client = get_client()
 
-    # We use session state to enforce a 30-second wait to be absolutely safe with your quota
-    if 'last_run' not in st.session_state: st.session_state.last_run = 0
-
-    if time.time() - st.session_state.last_run > 30:
-        instruction = get_instruction(client)
-        if instruction and "ADJUST" in instruction:
-            st.success(f"KERNEL RESPONSE: {instruction}")
-            st.session_state.last_run = time.time()
-        else:
-            st.warning("Awaiting next cycle...")
+    # CLEAR ALL STATES: This line forces the app to ignore previous 'cooldowns'
+    st.session_state.clear() 
+    
+    st.write("System attempting one-time connection...")
+    
+    instruction = get_instruction(client)
+    
+    if instruction and "ADJUST" in instruction:
+        st.success(f"KERNEL RESPONSE: {instruction}")
+        st.balloons()
     else:
-        st.info(f"System cooling: {30 - int(time.time() - st.session_state.last_run)}s remaining.")
-        time.sleep(2)
-        st.rerun()
-
-    time.sleep(5)
-    st.rerun()
+        st.error(f"KERNEL REFUSAL/ERROR: {instruction}")
+        st.write("Check Groq console for usage limits. If limit is 0, wait for daily reset.")
 
 if __name__ == "__main__":
     main()
