@@ -6,7 +6,8 @@ from groq import Groq
 
 @st.cache_resource
 def get_client():
-    return Groq(api_key=st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY"))
+    key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
+    return Groq(api_key=key)
 
 def get_instruction(client):
     try:
@@ -16,30 +17,29 @@ def get_instruction(client):
             temperature=0.0
         )
         return response.choices[0].message.content
-    except Exception:
+    except Exception as e:
         return None
 
 def main():
     st.title("AXIOM-0: QUANTUM LINK ACTIVE")
     client = get_client()
 
-    # Simple 20-second interval logic
-    if 'next_run' not in st.session_state: st.session_state.next_run = 0
+    # We use session state to enforce a 30-second wait to be absolutely safe with your quota
+    if 'last_run' not in st.session_state: st.session_state.last_run = 0
 
-    if time.time() >= st.session_state.next_run:
+    if time.time() - st.session_state.last_run > 30:
         instruction = get_instruction(client)
-        if instruction:
-            st.success(f"INSTRUCTION: {instruction}")
-            st.session_state.next_run = time.time() + 20 # 20s interval
+        if instruction and "ADJUST" in instruction:
+            st.success(f"KERNEL RESPONSE: {instruction}")
+            st.session_state.last_run = time.time()
         else:
-            st.warning("Connection lost. Retrying in 60s...")
-            st.session_state.next_run = time.time() + 60
+            st.warning("Awaiting next cycle...")
     else:
-        st.info(f"Stasis. Next update: {int(st.session_state.next_run - time.time())}s")
+        st.info(f"System cooling: {30 - int(time.time() - st.session_state.last_run)}s remaining.")
         time.sleep(2)
         st.rerun()
 
-    time.sleep(2)
+    time.sleep(5)
     st.rerun()
 
 if __name__ == "__main__":
